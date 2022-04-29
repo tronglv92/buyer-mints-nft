@@ -9,7 +9,7 @@
     "compile": "cross-env BUILDING=true hardhat compile",
     "deploy": "cross-env BUILDING=true hardhat deploy --export-all ../vite-app-ts/src/generated/hardhat_contracts.json && yarn run postdeploy",
     "clean": "cross-env BUILDING=true hardhat clean",
-    "postdeploy": "hardhat run tasks/functions/publish.ts",
+    "postdeploy": "hardhat run scripts/publish.ts",
     "watch:compile": "yarn hardhat watch compile",
     "accounts": "hardhat accounts",
     "generate": "hardhat generate",

@@ -1,6 +1,6 @@
 import '~~/styles/main-page.css';
 import { GenericContract } from 'eth-components/ant/generic-contract';
-import { useContractReader, useBalance, useEthersAdaptorFromProviderOrSigners, useEventListener } from 'eth-hooks';
+import { useBalance, useEthersAdaptorFromProviderOrSigners } from 'eth-hooks';
 import { useEthersContext } from 'eth-hooks/context';
 import { useDexEthPrice } from 'eth-hooks/dapps';
 import { asEthersAdaptor } from 'eth-hooks/functions';
@@ -10,6 +10,9 @@ import { NETWORKS } from 'scaffold-common/src/constants';
 
 import { MainPageFooter, MainPageHeader, createPagesAndTabs, TContractPageList } from './components/main';
 import { useScaffoldHooksExamples as useScaffoldHooksExamples } from './components/main/hooks/useScaffoldHooksExamples';
+import YourCollectiblesUI from './components/pages/collectibles/YourCollectiblesUI';
+import GalleryLoadUI from './components/pages/gallery/GalleryLoadUI';
+import TransferUI from './components/pages/transfer/TransferUI';
 
 import { useAppContracts, useConnectAppContracts, useLoadAppContracts } from '~~/components/contractContext';
 import { useBurnerFallback } from '~~/components/main/hooks/useBurnerFallback';
@@ -69,19 +72,19 @@ export const MainPage: FC = () => {
   // -----------------------------
 
   // init contracts
-  const yourContract = useAppContracts('YourContract', ethersContext.chainId);
+  const yourContract = useAppContracts('YourNFT', ethersContext.chainId);
   const mainnetDai = useAppContracts('DAI', NETWORKS.mainnet.chainId);
 
-  // keep track of a variable from the contract in the local React state:
-  const [purpose, update] = useContractReader(
-    yourContract,
-    yourContract?.purpose,
-    [],
-    yourContract?.filters.SetPurpose()
-  );
+  // // keep track of a variable from the contract in the local React state:
+  // const [purpose, update] = useContractReader(
+  //   yourContract,
+  //   yourContract?.purpose,
+  //   [],
+  //   yourContract?.filters.SetPurpose()
+  // );
 
-  // 📟 Listen for broadcast events
-  const [setPurposeEvents] = useEventListener(yourContract, 'SetPurpose', 0);
+  // // 📟 Listen for broadcast events
+  // const [setPurposeEvents] = useEventListener(yourContract, 'SetPurpose', 0);
 
   // -----------------------------
   // .... 🎇 End of examples
@@ -103,23 +106,24 @@ export const MainPage: FC = () => {
   // This is the list of pages and tabs
   const pageList: TContractPageList = {
     mainPage: {
-      name: 'YourContract',
-      element: (
-        <GenericContract
-          contractName="YourContract"
-          contract={yourContract}
-          mainnetAdaptor={scaffoldAppProviders.mainnetAdaptor}
-          blockExplorer={scaffoldAppProviders.targetNetwork.blockExplorer}
-        />
-      ),
+      name: 'Gallery',
+      element: <GalleryLoadUI scaffoldAppProviders={scaffoldAppProviders} />,
     },
     pages: [
       {
-        name: 'Dai',
+        name: 'YourCollectibles',
+        element: <YourCollectiblesUI scaffoldAppProviders={scaffoldAppProviders} />,
+      },
+      {
+        name: 'Transfers',
+        element: <TransferUI scaffoldAppProviders={scaffoldAppProviders} />,
+      },
+      {
+        name: 'DebugContracts',
         element: (
           <GenericContract
-            contractName="Dai"
-            contract={mainnetDai}
+            contractName="YourNFT"
+            contract={yourContract}
             mainnetAdaptor={scaffoldAppProviders.mainnetAdaptor}
             blockExplorer={scaffoldAppProviders.targetNetwork.blockExplorer}
           />
