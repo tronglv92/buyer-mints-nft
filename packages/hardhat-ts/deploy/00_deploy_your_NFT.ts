@@ -13,7 +13,9 @@ const func: DeployFunction = async (hre: THardhatRuntimeEnvironmentExtended) => 
   // read in all the assets to get their IPFS hash...
 
   let uploadedAssets = JSON.parse(fs.readFileSync('./uploaded.json', 'utf-8'));
+
   let bytes32Array = [];
+  // a is key: hash of ipfs
   for (let a in uploadedAssets) {
     console.log(' 🏷 IPFS:', a);
     let bytes32 = ethers.utils.id(a);

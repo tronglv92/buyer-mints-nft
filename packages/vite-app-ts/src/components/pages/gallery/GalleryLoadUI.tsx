@@ -1,14 +1,14 @@
 import { LinkOutlined } from '@ant-design/icons';
-import { Button, Card, InputNumber, Modal } from 'antd';
+import { Button, Card, InputNumber, Modal, notification } from 'antd';
 import { format } from 'date-fns';
 // import 'graphiql/graphiql.min.css';
 
 import { Address } from 'eth-components/ant';
 import { transactor } from 'eth-components/functions';
 import { EthComponentsSettingsContext } from 'eth-components/models';
-import { useBlockNumber, useEventListener, useGasPrice } from 'eth-hooks';
+import { useBlockNumber, useContractReader, useEventListener, useGasPrice } from 'eth-hooks';
 import { useEthersContext } from 'eth-hooks/context';
-import { ethers, utils, constants } from 'ethers';
+import { ethers, utils, constants, BigNumber } from 'ethers';
 import React, { FC, useContext, useEffect, useState } from 'react';
 import StackGrid from 'react-stack-grid';
 
@@ -19,13 +19,34 @@ import { IScaffoldAppProviders } from '~~/components/main/hooks/useScaffoldAppPr
 // import GraphiQL from 'graphiql';
 
 import { getNetworkInfo } from '~~/functions';
-import { parseEther } from '@ethersproject/units';
+import { formatEther, parseEther } from '@ethersproject/units';
+import { getSignature } from '../../../helpers/getSignature';
+import { Auction } from '~~/generated/contract-types';
+import _ from 'lodash';
 // const GraphiQL = lazy(() => import('graphiql'));
 
 export interface IGalleryUIProps {
   scaffoldAppProviders: IScaffoldAppProviders;
 }
 
+export interface IAssetProps {
+  id: string;
+  name: string;
+  description: string;
+  external_url: string;
+  image: string;
+  attributes: any[];
+  forSale: boolean;
+  owner: string | undefined;
+
+  auctionInfo: Auction.TokenDetailsStructOutput;
+  bidsInfo: Record<string, any>;
+  stake: BigNumber;
+  maxBidInfo: any;
+}
+export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+// 😬 Sorry for all the console logging
+const DEBUG = false;
 /**
  * Subgraph also disabled in MainPageMenu, it does not work, see github issue https://github.com/scaffold-eth/scaffold-eth-typescript/issues/48!
  * @param props
@@ -33,17 +54,18 @@ export interface IGalleryUIProps {
  */
 export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   const ethersContext = useEthersContext();
-  const yourContract = useAppContracts('YourNFT', ethersContext.chainId);
+  const yourNFT = useAppContracts('YourNFT', ethersContext.chainId);
   const yourAution = useAppContracts('Auction', ethersContext.chainId);
-  const [loadedAssets, setLoadedAssets] = useState<any>([]);
+  const [loadedAssets, setLoadedAssets] = useState<IAssetProps[]>([]);
   const [yourBid, setYourBid] = useState<Record<string, string>>({});
+  const [stakedAmount, setStakedAmount] = useState<Record<string, string>>({});
   const [modalVisible, setModalVisible] = useState(false);
   const [auctionToken, setAuctionToken] = useState('');
   const [auctionDetails, setAuctionDetails] = useState({ price: '', duration: '' });
   const [blocknumber] = useBlockNumber(props.scaffoldAppProviders.localAdaptor?.provider, (blockNumber) =>
     console.log(`⛓ A new local block is here: ${blockNumber}`)
   );
-  const [transferEvents, update] = useEventListener(yourContract, 'Transfer', blocknumber);
+  const [transferEvents, update] = useEventListener(yourNFT, 'Transfer', blocknumber);
   const address = ethersContext.account;
   // console.log('blocknumber ', blocknumber);
   // console.log('transferEvents ', transferEvents);
@@ -59,24 +81,47 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   const settingsContext = useContext(EthComponentsSettingsContext);
   const tx = transactor(settingsContext, signer, undefined, undefined, true);
 
+  const [stakedEth] = useContractReader(yourAution, yourAution?.getTotalBidderStake, [address ?? ZERO_ADDRESS]);
+  if (DEBUG) console.log('🤗 stakedEth:', stakedEth);
   /* 🔥 This hook will get the price of Gas from ⛽️ EtherGasStation */
   const [gasPrice] = useGasPrice(ethersContext.chainId, 'fast', getNetworkInfo(ethersContext.chainId));
   const updateYourCollectibles = async () => {
-    const assetUpdate: any[] = [];
+    const assetUpdate: IAssetProps[] = [];
     const items: Record<string, any> = assets;
-    if (yourContract && yourAution) {
+
+    if (yourNFT && yourAution && address) {
       for (const a in items) {
         try {
-          const forSale = await yourContract.forSale(ethers.utils.id(a));
+          const forSale = await yourNFT.forSale(ethers.utils.id(a));
           let owner;
           let auctionInfo;
+          let stake: BigNumber = BigNumber.from(0);
+          let bidsInfo: Record<string, any> = {};
+          let maxBidInfo;
+
           if (!forSale) {
-            const tokenId = await yourContract.uriToTokenId(ethers.utils.id(a));
-            owner = await yourContract.ownerOf(tokenId);
-            const nftAddress = yourContract.address;
+            const tokenId = await yourNFT.uriToTokenId(ethers.utils.id(a));
+            owner = await yourNFT.ownerOf(tokenId);
+            const nftAddress = yourNFT.address;
+            // console.log('tokenId ', tokenId);
+            // console.log('nftAddress ', nftAddress);
             auctionInfo = await yourAution.getTokenAuctionDetails(nftAddress, tokenId);
+            stake = await yourAution.getStakeInfo(nftAddress, tokenId, address);
+
+            try {
+              // console.log(`http://localhost:8001/${a}`);
+              let data = await fetch(`http://localhost:8001/${a}`).then((data) => data.json());
+              // console.log('data ', data);
+              bidsInfo = data.transaction ?? {};
+              maxBidInfo = data.maxBidInfo;
+            } catch (e) {
+              console.log('updateYourCollectibles bidsInfo', e);
+              bidsInfo = {};
+              maxBidInfo = undefined;
+            }
           }
-          assetUpdate.push({ id: a, ...items[a], forSale, owner, auctionInfo });
+
+          assetUpdate.push({ id: a, ...items[a], forSale, owner, auctionInfo, bidsInfo, stake, maxBidInfo });
         } catch (e) {
           console.log(e);
         }
@@ -87,39 +132,146 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   };
   useEffect(() => {
     updateYourCollectibles();
-  }, [assets, yourContract, transferEventsJsonString]);
+  }, [assets, yourNFT, transferEventsJsonString]);
 
-  const placeBid = async (tokenUri: string, ethAmount: string) => {
-    const tokenId = await yourContract?.uriToTokenId(utils.id(tokenUri));
-    const nftAddress = yourContract?.address;
-    if (tx) {
-      console.log('gasPrice,', gasPrice);
-      if (nftAddress && tokenId) {
-        await tx(yourAution?.bid(nftAddress, tokenId, { value: parseEther(ethAmount.toString()) }));
-      }
-      updateYourCollectibles();
+  const stakeEth = async (loadedAsset: IAssetProps) => {
+    const nftAddress = yourNFT?.address;
+    const tokenId = await yourNFT?.uriToTokenId(utils.id(loadedAsset.id));
+    if (tx && nftAddress && tokenId) {
+      await tx(yourAution?.stake(nftAddress, tokenId, { value: parseEther(stakedAmount[loadedAsset.id].toString()) }));
+
+      await updateYourCollectibles();
     }
   };
-  const completeAuction = (tokenUri: string) => {
-    return async () => {
-      const tokenId = await yourContract?.uriToTokenId(utils.id(tokenUri));
-      const nftAddress = yourContract?.address;
-      if (nftAddress && tokenId && tx) {
-        await tx(yourAution?.executeSale(nftAddress, tokenId));
-        updateYourCollectibles();
-      }
-    };
+  const withdrawStake = async (loadedAsset: IAssetProps) => {
+    const nftAddress = yourNFT?.address;
+    const tokenId = await yourNFT?.uriToTokenId(utils.id(loadedAsset.id));
+    if (tx && nftAddress && tokenId) {
+      await tx(yourAution?.withdrawStake(nftAddress, tokenId));
+      await updateYourCollectibles();
+    }
   };
-  const cancelAuction = (tokenUri: string) => {
-    return async () => {
-      const tokenId = await yourContract?.uriToTokenId(utils.id(tokenUri));
-      const nftAddress = yourContract?.address;
-      if (nftAddress && tokenId && tx) {
-        await tx(yourAution?.cancelAuction(nftAddress, tokenId));
-        updateYourCollectibles();
-      }
-    };
+  const isBidderIncluded = (bidsInfo: Record<string, any>) => {
+    const bidders = Object.entries(bidsInfo).map(([_, bidInfo]) => bidInfo.bidder);
+
+    return bidders.includes(address);
   };
+
+  const placeBid = async (loadedAsset: IAssetProps, ethAmount: string) => {
+    const tokenUri = loadedAsset.id;
+    const tokenId = await yourNFT?.uriToTokenId(utils.id(tokenUri));
+    const nftAddress = yourNFT?.address;
+    const parsedAmount = parseEther(ethAmount.toString());
+    const minPrice = loadedAsset.auctionInfo.price;
+    let maxBid = BigNumber.from(0);
+    if (loadedAsset.maxBidInfo) {
+      maxBid = BigNumber.from(loadedAsset.maxBidInfo.amount);
+    }
+    console.log('maxbid ', maxBid.toString());
+    console.log('parsedAmount ', parsedAmount.toString());
+    if (parsedAmount.gt(loadedAsset.stake) || parsedAmount.lt(minPrice)) {
+      return notification.error({
+        message: 'Invalid amount for bid',
+        description:
+          'This bid is not allowed. It is either less than minium price or you do not have enough staked ETH.',
+      });
+    }
+    if (parsedAmount.lte(maxBid)) {
+      return notification.error({
+        message: 'Invalid amount for bid',
+        description: 'This bid is not allowed. It must greater than the maximum bid',
+      });
+    }
+    let currentProvider = props.scaffoldAppProviders?.currentProvider;
+    console.log('placeBid currentProvider ', currentProvider);
+    if (currentProvider && address && tokenId) {
+      const signature = await getSignature(
+        currentProvider,
+        address,
+        ['uint256', 'address', 'address', 'uint256'],
+        [tokenId, nftAddress, address, parsedAmount]
+      );
+      await fetch('http://localhost:8001/', {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          address: tokenUri,
+          hash: signature,
+          id: tokenId.toString(),
+          nft: nftAddress,
+          bidder: address,
+          amount: parsedAmount.toString(),
+        }),
+      });
+      updateYourCollectibles();
+    } else {
+      console.log('placeBid: currentProvider,address,tokenId is null', currentProvider, address, tokenId);
+    }
+  };
+  const completeAuction = async (loadedAsset: IAssetProps, bidInfo: any) => {
+    console.log('WINNER:', loadedAsset, bidInfo);
+    if (yourNFT && tx) {
+      const nftAddress = yourNFT.address;
+      const tokenId = await yourNFT.uriToTokenId(utils.id(loadedAsset.id));
+      // const signedBid = {
+      //   id: tokenId,
+      //   nft: nftAddress,
+      //   bidder: bidInfo.bidder,
+      //   amount: BigNumber.from(bidInfo.amount),
+      // };
+      // console.log('signedBid', { signedBid });
+      console.log('bidInfo ', bidInfo);
+      await tx(
+        yourAution?.executeSale(nftAddress, tokenId, bidInfo.bidder, BigNumber.from(bidInfo.amount), bidInfo.hash)
+      );
+      updateYourCollectibles();
+      clearTokenUri(loadedAsset.id);
+    } else {
+      console.log('completeAuction: Error: yourContract or tx is null');
+    }
+
+    // return async () => {
+    //   const tokenId = await yourContract?.uriToTokenId(utils.id(tokenUri));
+    //   const nftAddress = yourContract?.address;
+    //   if (nftAddress && tokenId && tx) {
+    //     await tx(yourAution?.executeSale(nftAddress, tokenId));
+    //     updateYourCollectibles();
+    //   }
+    // };
+  };
+  const clearTokenUri = async (tokenUri: string) => {
+    await fetch('http://localhost:8001/clearAddress', {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        address: tokenUri,
+      }),
+    });
+    updateYourCollectibles();
+  };
+  const cancelAuction = async (loadedAsset: IAssetProps) => {
+    const tokenUri = loadedAsset.id;
+    const { bidsInfo } = loadedAsset;
+
+    const bidders = Object.entries(bidsInfo).map(([_, bidsInfo]) => bidsInfo.bidder);
+
+    const tokenId = await yourNFT?.uriToTokenId(utils.id(tokenUri));
+    const nftAddress = yourNFT?.address;
+    console.log('nftAddress ', nftAddress);
+    console.log('tokenId ', tokenId?.toString());
+    if (nftAddress && tokenId && tx) {
+      await tx(yourAution?.cancelAuction(nftAddress, tokenId));
+      updateYourCollectibles();
+      clearTokenUri(tokenUri);
+    }
+  };
+
   const startAuction = (tokenUri: string) => {
     return async () => {
       setAuctionToken(tokenUri);
@@ -130,6 +282,7 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   for (const a in loadedAssets) {
     const cardActions = [];
     let auctionDetails = [];
+
     if (loadedAssets[a].forSale) {
       cardActions.push(
         <div>
@@ -137,7 +290,7 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
             onClick={() => {
               if (tx) {
                 console.log('gasPrice,', gasPrice);
-                tx(yourContract?.mintItem(loadedAssets[a].id))
+                tx(yourNFT?.mintItem(loadedAssets[a].id))
                   .then(() => {})
                   .catch(() => {});
               }
@@ -148,9 +301,11 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
       );
       auctionDetails.push(null);
     } else {
-      const { auctionInfo } = loadedAssets[a];
-      const deadline = new Date(auctionInfo.duration * 1000);
+      const { auctionInfo, stake, maxBidInfo } = loadedAssets[a];
+      // console.log('maxBidInfo ', maxBidInfo);
+      const deadline = new Date(auctionInfo.duration.toNumber() * 1000);
       const isEnded = deadline <= new Date();
+      const { bidsInfo } = loadedAssets[a];
 
       cardActions.push(
         <div>
@@ -174,20 +329,68 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
               <br />
             </>
           )}
+          {isEnded &&
+            loadedAssets[a].auctionInfo.isActive &&
+            address === loadedAssets[a].auctionInfo.seller &&
+            _.isEmpty(loadedAssets[a].maxBidInfo) == false && (
+              <>
+                <Button
+                  style={{ marginBottom: '10px' }}
+                  onClick={() => {
+                    completeAuction(loadedAssets[a], loadedAssets[a].maxBidInfo);
+                  }}>
+                  Complete auction
+                </Button>
+                <br />
+              </>
+            )}
           {loadedAssets[a].auctionInfo.isActive && address === loadedAssets[a].auctionInfo.seller && (
             <>
-              <Button style={{ marginBottom: '10px' }} onClick={completeAuction(loadedAssets[a].id)}>
-                Complete auction
+              <Button style={{ marginBottom: '10px' }} onClick={() => cancelAuction(loadedAssets[a])}>
+                Cancel auction
               </Button>
               <br />
             </>
           )}
-          {loadedAssets[a].auctionInfo.isActive && address === loadedAssets[a].auctionInfo.seller && (
+          {auctionInfo.isActive && address != auctionInfo.seller && (
             <>
-              <Button style={{ marginBottom: '10px' }} onClick={cancelAuction(loadedAssets[a].id)}>
-                Cancel auction
-              </Button>
-              <br />
+              <p style={{ margin: 0, marginTop: '15px', marginBottom: '2px' }}>
+                Your staked ETH: {stake ? formatEther(stake) : 0.0}
+              </p>
+              {!isEnded && (
+                <>
+                  <p style={{ margin: 0, marginRight: '15px' }}>How much ETH you want to stake: </p>
+                  <InputNumber
+                    placeholder="0.1"
+                    value={stakedAmount[loadedAssets[a].id]}
+                    onChange={(newStake) => setStakedAmount({ ...stakedAmount, [loadedAssets[a].id]: newStake })}
+                    style={{ flexGrow: 1, marginTop: '7px', marginBottom: '20px', marginRight: '15px' }}
+                  />
+                  <Button
+                    disabled={!stakedAmount[loadedAssets[a].id]}
+                    onClick={() => stakeEth(loadedAssets[a])}
+                    style={{ marginBottom: '10px' }}>
+                    Stake ETH
+                  </Button>
+                  <br />
+                  <br />
+                </>
+              )}
+            </>
+          )}
+          {auctionInfo.seller != ZERO_ADDRESS && address != auctionInfo.seller && stake.gt(BigNumber.from(0)) && (
+            <>
+              {(isEnded || auctionInfo.isActive == false) && (
+                <>
+                  <p>ETH stake: {ethers.utils.formatEther(stake)}</p>
+                  <Button
+                    disabled={!loadedAssets[a].stake}
+                    onClick={() => withdrawStake(loadedAssets[a])}
+                    style={{ marginBottom: '15px' }}>
+                    Withdraw your stake
+                  </Button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -203,23 +406,69 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
               {!isEnded ? `Auction ends at ${format(deadline, 'MMMM dd, hh:mm:ss')}` : 'Auction has already ended'}
             </p>
             <div>
-              {auctionInfo.maxBidUser === constants.AddressZero ? (
+              {_.isEmpty(maxBidInfo) === true ? (
                 'Highest bid was not made yet'
               ) : (
                 <div>
                   Highest bid by:{' '}
                   <Address
-                    address={auctionInfo.maxBidUser}
+                    address={maxBidInfo.bidder}
                     ensProvider={props.scaffoldAppProviders.mainnetAdaptor?.provider}
                     blockExplorer={props.scaffoldAppProviders.targetNetwork.blockExplorer}
                     minimized={true}
                   />
-                  <p>{utils.formatEther(auctionInfo.maxBid)} ETH</p>
+                  <p>{utils.formatEther(maxBidInfo.amount)} ETH</p>
                 </div>
               )}
             </div>
 
-            <div>
+            {auctionInfo.seller !== address ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', marginTop: '20px' }}>
+                  <p style={{ margin: 0, marginRight: '15px' }}>Your bid in ETH: </p>
+                  <InputNumber
+                    placeholder="0.1"
+                    value={yourBid[loadedAssets[a].id]}
+                    onChange={(newBid) => setYourBid({ ...yourBid, [loadedAssets[a].id]: newBid })}
+                    style={{ flexGrow: 1 }}
+                  />
+                </div>
+                <Button
+                  style={{ marginTop: '7px', marginBottom: '20px' }}
+                  onClick={() => placeBid(loadedAssets[a], yourBid[loadedAssets[a].id])}
+                  disabled={!yourBid[loadedAssets[a].id] || isEnded}>
+                  {/* {isBidderIncluded(bidsInfo) ? 'You already made a bid' : 'Place a bid'} */}
+                  Place a bid
+                </Button>
+              </div>
+            ) : (
+              <b>You are selling this item</b>
+            )}
+            {loadedAssets[a].auctionInfo.isActive && (
+              <div>
+                {Object.entries(bidsInfo).map(([_, bidInfo]) => {
+                  // console.log('bidInfo ', bidInfo);
+                  return (
+                    <div style={{ marginBottom: '20px' }}>
+                      Bid by:{' '}
+                      <Address
+                        address={bidInfo.bidder}
+                        ensProvider={props.scaffoldAppProviders.mainnetAdaptor?.provider}
+                        blockExplorer={props.scaffoldAppProviders.targetNetwork.blockExplorer}
+                        minimized={true}
+                      />
+                      <p style={{ margin: 0 }}>{formatEther(bidInfo.amount)} ETH</p>
+                      {/* {address === loadedAssets[a].auctionInfo.seller && (
+                        <Button disabled={!isEnded} onClick={() => completeAuction(loadedAssets[a], bidInfo)}>
+                          Pick as a winner
+                        </Button>
+                      )} */}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* <div>
               <div style={{ display: 'flex', alignItems: 'center', marginTop: '20px' }}>
                 <p style={{ margin: 0, marginRight: '15px' }}>Your bid in ETH: </p>
                 <InputNumber
@@ -234,7 +483,7 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
                 disabled={!yourBid[loadedAssets[a].id] || isEnded}>
                 Place a bid
               </Button>
-            </div>
+            </div> */}
           </div>
         ) : null
       );
@@ -265,11 +514,11 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   const handleOk = async () => {
     setModalVisible(false);
     const { price, duration } = auctionDetails;
-    const tokenId = await yourContract?.uriToTokenId(utils.id(auctionToken));
+    const tokenId = await yourNFT?.uriToTokenId(utils.id(auctionToken));
 
     const auctionAddress = yourAution?.address;
-    const nftAddress = yourContract?.address;
-    if (auctionAddress && tokenId) await yourContract?.approve(auctionAddress, tokenId);
+    const nftAddress = yourNFT?.address;
+    if (auctionAddress && tokenId) await yourNFT?.approve(auctionAddress, tokenId);
 
     const ethPrice = utils.parseEther(price.toString());
     const blockDuration = Math.floor(new Date().getTime() / 1000) + duration;
@@ -291,6 +540,11 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
       <Button disabled={galleryList.length === 0} onClick={updateYourCollectibles} style={{ marginBottom: '25px' }}>
         Update collectibles
       </Button>
+      {stakedEth && (
+        <p>
+          Total ETH staked: <b>{formatEther(stakedEth)}</b>
+        </p>
+      )}
       <StackGrid columnWidth={200} gutterWidth={16} gutterHeight={16}>
         {galleryList}
       </StackGrid>

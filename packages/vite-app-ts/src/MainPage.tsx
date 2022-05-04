@@ -4,6 +4,7 @@ import { useBalance, useEthersAdaptorFromProviderOrSigners } from 'eth-hooks';
 import { useEthersContext } from 'eth-hooks/context';
 import { useDexEthPrice } from 'eth-hooks/dapps';
 import { asEthersAdaptor } from 'eth-hooks/functions';
+
 import React, { FC, useEffect, useState } from 'react';
 import { BrowserRouter, Switch } from 'react-router-dom';
 import { NETWORKS } from 'scaffold-common/src/constants';
@@ -73,6 +74,7 @@ export const MainPage: FC = () => {
 
   // init contracts
   const yourContract = useAppContracts('YourNFT', ethersContext.chainId);
+  const yourAuction = useAppContracts('Auction', ethersContext.chainId);
   const mainnetDai = useAppContracts('DAI', NETWORKS.mainnet.chainId);
 
   // // keep track of a variable from the contract in the local React state:
@@ -119,11 +121,22 @@ export const MainPage: FC = () => {
         element: <TransferUI scaffoldAppProviders={scaffoldAppProviders} />,
       },
       {
-        name: 'DebugContracts',
+        name: 'DebugNFT',
         element: (
           <GenericContract
             contractName="YourNFT"
             contract={yourContract}
+            mainnetAdaptor={scaffoldAppProviders.mainnetAdaptor}
+            blockExplorer={scaffoldAppProviders.targetNetwork.blockExplorer}
+          />
+        ),
+      },
+      {
+        name: 'DebugAuction',
+        element: (
+          <GenericContract
+            contractName="Auction"
+            contract={yourAuction}
             mainnetAdaptor={scaffoldAppProviders.mainnetAdaptor}
             blockExplorer={scaffoldAppProviders.targetNetwork.blockExplorer}
           />

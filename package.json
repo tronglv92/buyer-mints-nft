@@ -33,7 +33,8 @@
     "subgraph": "yarn workspace @scaffold-eth/subgraph",
     "prepare": "husky install",
     "postinstall": "husky install",
-    "upload": "cd packages/hardhat-ts && npx hardhat upload"
+    "upload": "cd packages/hardhat-ts && npx hardhat upload",
+    "backend": "yarn workspace @scaffold-eth/backend dev"
   },
   "workspaces": {
     "packages": [
