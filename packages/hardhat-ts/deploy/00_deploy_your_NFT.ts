@@ -15,18 +15,22 @@ const func: DeployFunction = async (hre: THardhatRuntimeEnvironmentExtended) => 
   let uploadedAssets = JSON.parse(fs.readFileSync('./uploaded.json', 'utf-8'));
 
   let bytes32Array = [];
+  let prices = [];
   // a is key: hash of ipfs
   for (let a in uploadedAssets) {
     console.log(' 🏷 IPFS:', a);
     let bytes32 = ethers.utils.id(a);
     console.log(' #️⃣ hashed:', bytes32);
     bytes32Array.push(bytes32);
+    let price = ethers.utils.parseEther(uploadedAssets[a].price.toString());
+    console.log(' #️⃣ price:', price.toString());
+    prices.push(price.toString());
   }
   console.log(' \n');
   await deploy('YourNFT', {
     // Learn more about args here: https://www.npmjs.com/package/hardhat-deploy#deploymentsdeploy
     from: deployer,
-    args: [bytes32Array],
+    args: [bytes32Array, prices],
     log: true,
   });
 

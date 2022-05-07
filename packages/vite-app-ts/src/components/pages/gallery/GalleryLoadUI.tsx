@@ -37,7 +37,10 @@ export interface IAssetProps {
   image: string;
   attributes: any[];
   forSale: boolean;
+  mint: boolean;
   owner: string | undefined;
+  price: BigNumber;
+  seller: string | undefined;
 
   auctionInfo: Auction.TokenDetailsStructOutput;
   bidsInfo: Record<string, any>;
@@ -59,9 +62,12 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   const [loadedAssets, setLoadedAssets] = useState<IAssetProps[]>([]);
   const [yourBid, setYourBid] = useState<Record<string, string>>({});
   const [stakedAmount, setStakedAmount] = useState<Record<string, string>>({});
-  const [modalVisible, setModalVisible] = useState(false);
+  const [modalAuctionVisible, setModalAuctionVisible] = useState(false);
+  const [modalSaleVisible, setModalSaleVisible] = useState(false);
   const [auctionToken, setAuctionToken] = useState('');
   const [auctionDetails, setAuctionDetails] = useState({ price: '', duration: '' });
+  const [saleDetail, setSaleDetail] = useState({ tokenUri: '', price: '' });
+
   const [blocknumber] = useBlockNumber(props.scaffoldAppProviders.localAdaptor?.provider, (blockNumber) =>
     console.log(`⛓ A new local block is here: ${blockNumber}`)
   );
@@ -92,21 +98,24 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
     if (yourNFT && yourAution && address) {
       for (const a in items) {
         try {
-          const forSale = await yourNFT.forSale(ethers.utils.id(a));
-          let owner;
+          const item = await yourNFT.forSale(ethers.utils.id(a));
+
+          let owner = item.ownerItem;
+
+          let seller = item.sellerItem;
           let auctionInfo;
           let stake: BigNumber = BigNumber.from(0);
           let bidsInfo: Record<string, any> = {};
           let maxBidInfo;
 
-          if (!forSale) {
-            const tokenId = await yourNFT.uriToTokenId(ethers.utils.id(a));
-            owner = await yourNFT.ownerOf(tokenId);
+          // owner = item.owner;
+          // let seller = item.seller;
+          if (item.mint && item.tokenId) {
             const nftAddress = yourNFT.address;
             // console.log('tokenId ', tokenId);
             // console.log('nftAddress ', nftAddress);
-            auctionInfo = await yourAution.getTokenAuctionDetails(nftAddress, tokenId);
-            stake = await yourAution.getStakeInfo(nftAddress, tokenId, address);
+            auctionInfo = await yourAution.getTokenAuctionDetails(nftAddress, item.tokenId);
+            stake = await yourAution.getStakeInfo(nftAddress, item.tokenId, address);
 
             try {
               // console.log(`http://localhost:8001/${a}`);
@@ -121,7 +130,19 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
             }
           }
 
-          assetUpdate.push({ id: a, ...items[a], forSale, owner, auctionInfo, bidsInfo, stake, maxBidInfo });
+          assetUpdate.push({
+            id: a,
+            ...items[a],
+            forSale: item.sale,
+            owner,
+            auctionInfo,
+            bidsInfo,
+            stake,
+            maxBidInfo,
+            price: item.price,
+            seller,
+            mint: item.mint,
+          });
         } catch (e) {
           console.log(e);
         }
@@ -275,8 +296,32 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   const startAuction = (tokenUri: string) => {
     return async () => {
       setAuctionToken(tokenUri);
-      setModalVisible(true);
+      setModalAuctionVisible(true);
     };
+  };
+  const startSale = async (tokenUri: string) => {
+    setSaleDetail({ ...saleDetail, tokenUri: tokenUri });
+    setModalSaleVisible(true);
+  };
+  const onBuyItem = async (loadedAsset: IAssetProps) => {
+    if (tx) {
+      const tokenId = await yourNFT?.uriToTokenId(utils.id(loadedAsset.id));
+      console.log('tokenId,', tokenId?.toString());
+      console.log('address ', yourNFT?.address);
+      tx(yourNFT?.buyItem(loadedAsset.id, { value: loadedAsset.price }))
+        .then(() => {})
+        .catch(() => {});
+    }
+  };
+  const onCancelSale = async (loadedAsset: IAssetProps) => {
+    if (tx) {
+      const tokenId = await yourNFT?.uriToTokenId(utils.id(loadedAsset.id));
+      console.log('tokenId,', tokenId?.toString());
+      console.log('address ', yourNFT?.address);
+      tx(yourNFT?.cancelSaleItem(loadedAsset.id))
+        .then(() => {})
+        .catch(() => {});
+    }
   };
   const galleryList: any = [];
   for (const a in loadedAssets) {
@@ -285,19 +330,45 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
 
     if (loadedAssets[a].forSale) {
       cardActions.push(
-        <div>
-          <Button
-            onClick={() => {
-              if (tx) {
-                console.log('gasPrice,', gasPrice);
-                tx(yourNFT?.mintItem(loadedAssets[a].id))
-                  .then(() => {})
-                  .catch(() => {});
-              }
-            }}>
-            Mint
-          </Button>
-        </div>
+        <>
+          {loadedAssets[a].mint == false && (
+            <div>
+              <Button
+                onClick={() => {
+                  console.log(
+                    'parseEther(loadedAssets[a].price.toString())',
+                    loadedAssets[a].price.toString().toString()
+                  );
+                  if (tx) {
+                    console.log('gasPrice,', gasPrice);
+                    tx(yourNFT?.mintItem(loadedAssets[a].id, { value: loadedAssets[a].price }))
+                      .then(() => {})
+                      .catch(() => {});
+                  }
+                }}>
+                Mint
+              </Button>
+            </div>
+          )}
+          {loadedAssets[a].mint == true && (
+            <>
+              <div>
+                Seller by
+                <Address
+                  address={loadedAssets[a].seller}
+                  ensProvider={props.scaffoldAppProviders.mainnetAdaptor?.provider}
+                  blockExplorer={props.scaffoldAppProviders.targetNetwork?.blockExplorer}
+                  minimized
+                />
+              </div>
+              {loadedAssets[a].seller != address ? (
+                <Button onClick={() => onBuyItem(loadedAssets[a])}>Buy</Button>
+              ) : (
+                <Button onClick={() => onCancelSale(loadedAssets[a])}>Cancel Sale</Button>
+              )}
+            </>
+          )}
+        </>
       );
       auctionDetails.push(null);
     } else {
@@ -325,6 +396,17 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
                 onClick={startAuction(loadedAssets[a].id)}
                 disabled={address !== loadedAssets[a].owner}>
                 Start auction
+              </Button>
+              <br />
+            </>
+          )}
+          {!loadedAssets[a].auctionInfo.isActive && address === loadedAssets[a].owner && (
+            <>
+              <Button
+                style={{ marginBottom: '10px' }}
+                onClick={() => startSale(loadedAssets[a].id)}
+                disabled={address !== loadedAssets[a].owner}>
+                Start Sale
               </Button>
               <br />
             </>
@@ -507,12 +589,15 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
         }>
         <img style={{ maxWidth: 130 }} src={loadedAssets[a].image} alt="" />
         <div style={{ opacity: 0.77 }}>{loadedAssets[a].description}</div>
+        {loadedAssets[a].forSale == true && (
+          <div style={{ opacity: 0.77 }}>Price: {ethers.utils.formatEther(loadedAssets[a].price)} ETH</div>
+        )}
         {auctionDetails}
       </Card>
     );
   }
   const handleOk = async () => {
-    setModalVisible(false);
+    setModalAuctionVisible(false);
     const { price, duration } = auctionDetails;
     const tokenId = await yourNFT?.uriToTokenId(utils.id(auctionToken));
 
@@ -531,9 +616,32 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
       console.log('auctionInfo', { auctionInfo });
     }
   };
+  const handleOKSale = async () => {
+    setModalSaleVisible(false);
+    console.log('sale details ', saleDetail);
 
+    if (saleDetail.tokenUri && saleDetail.price && yourNFT) {
+      const tokenId = await yourNFT.uriToTokenId(ethers.utils.id(saleDetail.tokenUri));
+
+      //await yourNFT.approve(yourNFT.address, tokenId);
+      const percentListPrice = await yourNFT.getPercentListPrice();
+      if (tx) {
+        const price = ethers.utils.parseEther(saleDetail.price.toString());
+        const listingPrice = price.mul(percentListPrice).div(100);
+
+        await tx(yourNFT.saleItem(saleDetail.tokenUri, price, { value: listingPrice }));
+
+        const saleDetails = await yourNFT.forSale(ethers.utils.id(saleDetail.tokenUri));
+        console.log('saleDetails ', saleDetails);
+      }
+    }
+  };
   const handleCancel = () => {
-    setModalVisible(false);
+    setModalAuctionVisible(false);
+  };
+
+  const handleCancelSale = () => {
+    setModalSaleVisible(false);
   };
   return (
     <div style={{ maxWidth: 820, margin: 'auto', marginTop: 32, paddingBottom: 256 }}>
@@ -550,7 +658,7 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
       </StackGrid>
       <Modal
         title="Start auction"
-        visible={modalVisible}
+        visible={modalAuctionVisible}
         onOk={handleOk}
         onCancel={handleCancel}
         okButtonProps={{ disabled: !auctionDetails.price || !auctionDetails.duration }}
@@ -571,6 +679,23 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
             placeholder="3600"
             value={auctionDetails.duration}
             onChange={(newDuration) => setAuctionDetails({ ...auctionDetails, duration: newDuration })}
+            style={{ flexGrow: 1 }}
+          />
+        </div>
+      </Modal>
+      <Modal
+        title="Start sale"
+        visible={modalSaleVisible}
+        onOk={handleOKSale}
+        onCancel={handleCancelSale}
+        okButtonProps={{ disabled: !saleDetail.price }}
+        okText="Start">
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <p style={{ margin: 0, marginRight: '15px' }}>ETH price : </p>
+          <InputNumber
+            placeholder="0.1"
+            value={saleDetail.price}
+            onChange={(newPrice) => setSaleDetail({ ...saleDetail, price: newPrice })}
             style={{ flexGrow: 1 }}
           />
         </div>

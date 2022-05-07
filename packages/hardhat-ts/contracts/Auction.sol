@@ -4,6 +4,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "hardhat/console.sol";
 import "./SignatureChecker.sol";
+import "./YourNFT.sol";
 
 contract Auction is IERC721Receiver, SignatureChecker {
   struct tokenDetails {
@@ -46,6 +47,10 @@ contract Auction is IERC721Receiver, SignatureChecker {
     require(_nft != address(0), "Invalid Account");
     require(_price > 0, "price should be more than 0");
     require(_duration > 0, "Invalid duration value");
+
+    bool sale= YourNFT(_nft).getSaleFromTokenId(_tokenId);
+    require(!sale,"Item is sold");
+    
 
     tokenDetails memory _auction = tokenDetails({
       seller: msg.sender,

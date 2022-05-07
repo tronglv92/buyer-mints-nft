@@ -25,12 +25,12 @@ export const YourCollectiblesUI: FC<IYourCollectiblesUIProps> = (props) => {
   const ethersContext = useEthersContext();
   const signer = props.scaffoldAppProviders.localAdaptor?.signer;
   const settingsContext = useContext(EthComponentsSettingsContext);
-  const yourContract = useAppContracts('YourNFT', ethersContext.chainId);
+  const yourNFT = useAppContracts('YourNFT', ethersContext.chainId);
   const tx = transactor(settingsContext, signer, undefined, undefined, true);
   const address = ethersContext.account;
   console.log('address ', address);
 
-  const [balance] = useContractReader(yourContract, yourContract?.balanceOf, [address ?? '']);
+  const [balance] = useContractReader(yourNFT, yourNFT?.balanceOf, [address ?? '']);
   console.log('🤗 balance:', balance);
 
   const mainnetAdaptor = props.scaffoldAppProviders.mainnetAdaptor;
@@ -52,10 +52,10 @@ export const YourCollectiblesUI: FC<IYourCollectiblesUIProps> = (props) => {
         for (let tokenIndex = 0; tokenIndex < yourBalance; tokenIndex++) {
           try {
             console.log('GEtting token index', tokenIndex);
-            const tokenId = await yourContract?.tokenOfOwnerByIndex(address, tokenIndex);
+            const tokenId = await yourNFT?.tokenOfOwnerByIndex(address, tokenIndex);
             console.log('tokenId', tokenId);
             if (tokenId) {
-              const tokenURI = await yourContract?.tokenURI(tokenId);
+              const tokenURI = await yourNFT?.tokenURI(tokenId);
               console.log('tokenURI', tokenURI);
               if (tokenURI) {
                 const jsonManifest = await getFromIPFS(tokenURI);
@@ -120,8 +120,8 @@ export const YourCollectiblesUI: FC<IYourCollectiblesUIProps> = (props) => {
                   <Button
                     onClick={() => {
                       const toAddress = transferToAddresses[id];
-                      if (tx && yourContract && address && toAddress) {
-                        tx(yourContract?.transferFrom(address, toAddress, id))
+                      if (tx && yourNFT && address && toAddress) {
+                        tx(yourNFT?.transferFrom(address, toAddress, id))
                           .then(() => {})
                           .catch(() => {});
                       }
