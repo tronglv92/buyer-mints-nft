@@ -30,10 +30,16 @@ const func: DeployFunction = async (hre: THardhatRuntimeEnvironmentExtended) => 
   await deploy('YourNFT', {
     // Learn more about args here: https://www.npmjs.com/package/hardhat-deploy#deploymentsdeploy
     from: deployer,
-    args: [bytes32Array, prices],
+    args: [],
     log: true,
   });
-
+  const YourNFT = await ethers.getContract('YourNFT', deployer);
+  await deploy('MarketPlaceNFT', {
+    // Learn more about args here: https://www.npmjs.com/package/hardhat-deploy#deploymentsdeploy
+    from: deployer,
+    args: [bytes32Array, prices, YourNFT.address],
+    log: true,
+  });
   /*
     // Getting a previously deployed contract
     const YourContract = await ethers.getContract("YourContract", deployer);

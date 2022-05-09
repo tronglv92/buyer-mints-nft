@@ -33,6 +33,11 @@ export const appContractsConfig = () => {
       // ),
 
       YourNFT: createConnectorForHardhatContract('YourNFT', hardhatContracts.YourNFT__factory, hardhatContractsJson),
+      MarketPlaceNFT: createConnectorForHardhatContract(
+        'MarketPlaceNFT',
+        hardhatContracts.MarketPlaceNFT__factory,
+        hardhatContractsJson
+      ),
       Auction: createConnectorForHardhatContract('Auction', hardhatContracts.Auction__factory, hardhatContractsJson),
       // --------------------------------------------------
       // 🙋🏽‍♂️ Add your external contracts here, make sure to define the address in `externalContractsConfig.ts`

@@ -48,8 +48,8 @@ contract Auction is IERC721Receiver, SignatureChecker {
     require(_price > 0, "price should be more than 0");
     require(_duration > 0, "Invalid duration value");
 
-    bool sale= YourNFT(_nft).getSaleFromTokenId(_tokenId);
-    require(!sale,"Item is sold");
+    // bool sale= YourNFT(_nft).getSaleFromTokenId(_tokenId);
+    // require(!sale,"Item is sold");
     
 
     tokenDetails memory _auction = tokenDetails({
@@ -200,5 +200,5 @@ contract Auction is IERC721Receiver, SignatureChecker {
     return bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"));
   }
 
-  receive() external payable {}
+  fallback() external payable {}
 }

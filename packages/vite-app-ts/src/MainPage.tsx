@@ -74,6 +74,7 @@ export const MainPage: FC = () => {
 
   // init contracts
   const yourContract = useAppContracts('YourNFT', ethersContext.chainId);
+  const marketPlaceNFT = useAppContracts('MarketPlaceNFT', ethersContext.chainId);
   const yourAuction = useAppContracts('Auction', ethersContext.chainId);
   const mainnetDai = useAppContracts('DAI', NETWORKS.mainnet.chainId);
 
@@ -126,6 +127,17 @@ export const MainPage: FC = () => {
           <GenericContract
             contractName="YourNFT"
             contract={yourContract}
+            mainnetAdaptor={scaffoldAppProviders.mainnetAdaptor}
+            blockExplorer={scaffoldAppProviders.targetNetwork.blockExplorer}
+          />
+        ),
+      },
+      {
+        name: 'DebugMarket',
+        element: (
+          <GenericContract
+            contractName="MarketPlace"
+            contract={marketPlaceNFT}
             mainnetAdaptor={scaffoldAppProviders.mainnetAdaptor}
             blockExplorer={scaffoldAppProviders.targetNetwork.blockExplorer}
           />

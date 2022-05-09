@@ -58,6 +58,7 @@ const DEBUG = false;
 export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
   const ethersContext = useEthersContext();
   const yourNFT = useAppContracts('YourNFT', ethersContext.chainId);
+  const marketPlaceNFT = useAppContracts('MarketPlaceNFT', ethersContext.chainId);
   const yourAution = useAppContracts('Auction', ethersContext.chainId);
   const [loadedAssets, setLoadedAssets] = useState<IAssetProps[]>([]);
   const [yourBid, setYourBid] = useState<Record<string, string>>({});
@@ -95,11 +96,11 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
     const assetUpdate: IAssetProps[] = [];
     const items: Record<string, any> = assets;
 
-    if (yourNFT && yourAution && address) {
+    if (marketPlaceNFT && yourAution && address) {
       for (const a in items) {
         try {
-          const item = await yourNFT.forSale(ethers.utils.id(a));
-
+          const item = await marketPlaceNFT.forSale(ethers.utils.id(a));
+          // console.log('item ', item);
           let owner = item.ownerItem;
 
           let seller = item.sellerItem;
@@ -108,14 +109,13 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
           let bidsInfo: Record<string, any> = {};
           let maxBidInfo;
 
-          // owner = item.owner;
-          // let seller = item.seller;
           if (item.mint && item.tokenId) {
-            const nftAddress = yourNFT.address;
-            // console.log('tokenId ', tokenId);
-            // console.log('nftAddress ', nftAddress);
-            auctionInfo = await yourAution.getTokenAuctionDetails(nftAddress, item.tokenId);
-            stake = await yourAution.getStakeInfo(nftAddress, item.tokenId, address);
+            if (yourNFT) {
+              owner = await yourNFT?.ownerOf(item.tokenId);
+              const nftAddress = yourNFT.address;
+              auctionInfo = await yourAution.getTokenAuctionDetails(nftAddress, item.tokenId);
+              stake = await yourAution.getStakeInfo(nftAddress, item.tokenId, address);
+            }
 
             try {
               // console.log(`http://localhost:8001/${a}`);
@@ -308,7 +308,7 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
       const tokenId = await yourNFT?.uriToTokenId(utils.id(loadedAsset.id));
       console.log('tokenId,', tokenId?.toString());
       console.log('address ', yourNFT?.address);
-      tx(yourNFT?.buyItem(loadedAsset.id, { value: loadedAsset.price }))
+      tx(marketPlaceNFT?.buyItem(loadedAsset.id, { value: loadedAsset.price }))
         .then(() => {})
         .catch(() => {});
     }
@@ -318,7 +318,7 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
       const tokenId = await yourNFT?.uriToTokenId(utils.id(loadedAsset.id));
       console.log('tokenId,', tokenId?.toString());
       console.log('address ', yourNFT?.address);
-      tx(yourNFT?.cancelSaleItem(loadedAsset.id))
+      tx(marketPlaceNFT?.cancelSaleItem(loadedAsset.id))
         .then(() => {})
         .catch(() => {});
     }
@@ -340,8 +340,9 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
                     loadedAssets[a].price.toString().toString()
                   );
                   if (tx) {
-                    console.log('gasPrice,', gasPrice);
-                    tx(yourNFT?.mintItem(loadedAssets[a].id, { value: loadedAssets[a].price }))
+                    console.log('loadedAssets[a].id ', loadedAssets[a].id);
+                    // console.log('gasPrice,', gasPrice);
+                    tx(marketPlaceNFT?.mintMarketItem(loadedAssets[a].id, { value: loadedAssets[a].price }))
                       .then(() => {})
                       .catch(() => {});
                   }
@@ -620,18 +621,19 @@ export const GalleryLoadUI: FC<IGalleryUIProps> = (props) => {
     setModalSaleVisible(false);
     console.log('sale details ', saleDetail);
 
-    if (saleDetail.tokenUri && saleDetail.price && yourNFT) {
+    if (saleDetail.tokenUri && saleDetail.price && marketPlaceNFT && yourNFT) {
       const tokenId = await yourNFT.uriToTokenId(ethers.utils.id(saleDetail.tokenUri));
 
-      //await yourNFT.approve(yourNFT.address, tokenId);
-      const percentListPrice = await yourNFT.getPercentListPrice();
+      const onwerToken = await yourNFT.ownerOf(tokenId);
+      if (onwerToken != marketPlaceNFT.address) await yourNFT.approve(marketPlaceNFT.address, tokenId);
+      const percentListPrice = await marketPlaceNFT.getPercentListPrice();
       if (tx) {
         const price = ethers.utils.parseEther(saleDetail.price.toString());
         const listingPrice = price.mul(percentListPrice).div(100);
 
-        await tx(yourNFT.saleItem(saleDetail.tokenUri, price, { value: listingPrice }));
+        await tx(marketPlaceNFT.saleItem(saleDetail.tokenUri, price, { value: listingPrice }));
 
-        const saleDetails = await yourNFT.forSale(ethers.utils.id(saleDetail.tokenUri));
+        const saleDetails = await marketPlaceNFT.forSale(ethers.utils.id(saleDetail.tokenUri));
         console.log('saleDetails ', saleDetails);
       }
     }
